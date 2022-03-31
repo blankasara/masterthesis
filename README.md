@@ -37,6 +37,18 @@ The 4 models: (Thesis.pdf pp.34-40)
 
 ![plate notation](/model_qdb.png)
 
+3 studies investigated the models:
+- parameter recovery studies: files: PR_randomresp.Rmd, PR_unrelated.Rmd, PR_model.Rmd, PR_model_qdb.Rmd
+Are the models internally coherent, so that their parameters are recoverable? To answer this question parameters were sampled from meaningfully wide distributions (see code: PR files). From these parameters data was simulated then that data fitted by the same model it was generated from. Through the fitting process parameters were inferred. Set parameters for simulation and infered parameters should correlate for an internally coherent model (see my results in THESIS.pdf pp. 41-48).
+
+- model recovery study: model_recovery.Rmd
+The model used for simulating its data should fit itself the best in comparison to alternative competing models. Here datasets were produced through simulation from all four models and cross-fitted with each other 100 times. (Results: confusion matrix in script and in THESIS.pdf pp. 48-49)
+
+- descriptive adequacy on real data: descriptive_adequacy.Rmd
+In the last study, all four models were evaluated on the actual collected data in terms of how well they can predict students' behavior on the rating scale. For my data, model with added question difficulty greatly outperformed the rest with an 80% accuracy. (Results: in the script and THESIS.pdf pp.49-51) The hard-easy effects of question difficulty seems to be a universal pattern even under less controlled circumstances (unique task environment). For the interpretations, potential explanations and limitations see my discussion in the paper.
+
+//Note on collected data: Due to confidentiality promised in the consent form following ethical guidelines, I cannot share the data I collected from the students. Consider the last study and associated script as inspiration.
+
 ## Cite this
 If you find any parts of my work useful for your own project, you may cite it as (in APA):
 Palfi, B. S. (2021). A metacognitive journey in monitoring: Modelling students' multiple-choice calibration in a non-traditional task environment (Unpublished manuscript). Department of Linguistics, Cognitive Science and Semiotics, Aarhus University.
