@@ -1,0 +1,57 @@
+model{
+
+  #priors of interest
+  ##Skill distr.
+  S ~ dunif(1/3,1) #mean for skill distr. (.3 chance with 3 options) - 0 to 1
+  
+  ##Sensitivity d'
+  rs <- (S-1/3)/(2/3) #phi(S)
+  #rescale S to be between 0,1
+  auc <- pnorm(rs,0,1) #AUC=cum(rs), acc. between 0.5 and 1
+  d <- qnorm(auc,0,1)*sqrt(2) #from AUC=cum(d'/sqrt(2))
+
+
+  #####Creating the thresholds for the ratings
+  #Unbiased on the [0,1] line and the real line [-,]
+  for (c in 1:(nCat-1)){
+    gam[c] <- c/nCat                        #[0,1] interval for uninf equal thresholds
+    gamReal[c] <- -log((1-gam[c])/gam[c])   #[-inf,inf] interval for uncertainty
+  }
+  
+#Parameters to create biased thresholds: a (slope or scale), b (intercept or shift)
+  a ~ dgamma(2,2)
+  b ~ dnorm(0,1)
+  #linear regression to estimate thresholds
+  for (c in 1:(nCat-1)){
+    dReal[c] <- a * gamReal[c] + b
+  }
+  
+  #Probability of each rating given correct or incorrect answer
+    #for rating 1 given incorr. (0,1 for incorr. distr.) and corr (mu,lambda)
+  pIn[1] <- pnorm(dReal[1],0,1)
+  pC[1] <- pnorm(dReal[1],d,1)
+    #prob for rest of the ratings given incorr. and corr.
+  for (c in 2:(nCat-1)){
+    pIn[c] <- pnorm(dReal[c],0,1) - sum(pIn[1:(c-1)])
+    pC[c] <- pnorm(dReal[c],d,1) - sum(pC[1:(c-1)])
+  }
+    #prob for last rating
+  pIn[nCat] <- 1 - sum(pIn[1:(nCat-1)])
+  pC[nCat] <- 1 - sum(pC[1:(nCat-1)])
+  
+#####Data draws by trials
+  for (t in 1:ntrials){
+
+    ## outcome of the trial based on S
+    O[t] ~ dbin(S,1) #outcome of trial t (0/1) follows binomial actual skill distr.
+
+    ## rating
+    for (c in 1:(nCat)){
+      pR[t,c] <- ifelse(O[t]==1, pC[c], pIn[c])
+    }
+    
+    
+    R[t] ~ dcat(pR[t,])
+    
+  }
+}

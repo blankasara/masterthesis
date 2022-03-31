@@ -1,0 +1,298 @@
+---
+title: "model_recovery"
+output: html_document
+---
+
+Model Recovery:
+The process is as follows:
+Simulating data 100 times from each model (randomresp, unrelated, model, model_qdb) then fitting by itself and the three alternative models. Question of this investigation is whether the model that best fits the simulated data is the same as the one that generated it? This is answered by comparing the DIC scores: which model has the smallest score when fitting the data? This is done 100 times and the winning model is always selected. These are then counted to produce a confusion matrix to see how many times out of 100 did each model fit each data set the best.
+
+Task environment set up
+```{r}
+#setwd('/Users/Blanka/Desktop/thesis_2.0')
+set.seed(1996)
+library(R2jags)
+library(polspline)
+library(extraDistr)
+
+ntrials <- 25
+nCat <- 4
+niterations <- 100
+
+```
+
+Taking RR data and applying RR,unR,model,Qd model 
+Taking unR data and applying RR,unR,model,Qd model 
+Taking model data and applying RR,unR,model,Qd model 
+Taking Qd data and applying RR,unR,model,Qd model
+
+Comparing DIc scores
+
+```{r}
+
+DICs_RR_dat <- array(0,c(niterations,4))
+DICs_UR_dat <- array(0,c(niterations,4))
+DICs_MC_dat <- array(0,c(niterations,4))
+DICs_QD_dat <- array(0,c(niterations,4))
+
+for (i in 1:niterations) {
+  
+  S <- runif(1,1/3,1) #skill
+  rs <- (S-1/3)/(2/3)
+  auc <- pnorm(rs,0,1) #accuracy (for d')
+  d <- qnorm(auc,0,1)*sqrt(2) #d'
+  a <- rgamma(1,2,2) #scale
+  b <- rnorm(1,0,1) #shift
+  
+  #run both models - forward simulation with functions (R files)
+  source("randomresp.R")
+  RR_sims <- RR(ntrials, nCat, S)
+  
+  source("unrelated.R")
+  UR_sims <- UR(ntrials, nCat, S, d, a, b)
+  
+  source("model.R")
+  MC_sims <- MC(ntrials, nCat, S, d, a, b)
+  
+  source("model_qdb.R")
+  QD_sims <- QD(ntrials, nCat, S, d, a, b)
+  
+  #RR sims and RR model
+  O <- RR_sims$O
+  R <- RR_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S")
+  RRdat_RRmod <- jags(data, inits=NULL, params, 
+                      model.file="randomresp.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #RR sims and UR model
+  O <- RR_sims$O
+  R <- RR_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  RRdat_URmod <- jags(data, inits=NULL, params, 
+                      model.file="unrelated.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #RR sims and model
+  O <- RR_sims$O
+  R <- RR_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  RRdat_MCmod <- jags(data, inits=NULL, params, 
+                      model.file="model.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #RR sims and QD model
+  O <- RR_sims$O
+  R <- RR_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  RRdat_QDmod <- jags(data, inits=NULL, params, 
+                      model.file="model_qdb.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #------------------------
+  
+  #UR sims and RR model
+  O <- UR_sims$O
+  R <- UR_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S")
+  URdat_RRmod <- jags(data, inits=NULL, params, 
+                      model.file="randomresp.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #UR sims and UR model
+  O <- UR_sims$O
+  R <- UR_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  URdat_URmod <- jags(data, inits=NULL, params, 
+                      model.file="unrelated.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #UR sims and model
+  O <- UR_sims$O
+  R <- UR_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  URdat_MCmod <- jags(data, inits=NULL, params, 
+                      model.file="model.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #UR sims and QD model
+  O <- UR_sims$O
+  R <- UR_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  URdat_QDmod <- jags(data, inits=NULL, params, 
+                      model.file="model_qdb.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #----------------------------------------
+  
+  #MC sims and RR model
+  O <- MC_sims$O
+  R <- MC_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S")
+  MCdat_RRmod <- jags(data, inits=NULL, params, 
+                      model.file="randomresp.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #MC sims and UR model
+  O <- MC_sims$O
+  R <- MC_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  MCdat_URmod <- jags(data, inits=NULL, params, 
+                      model.file="unrelated.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #MC sims and model
+  O <- MC_sims$O
+  R <- MC_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  MCdat_MCmod <- jags(data, inits=NULL, params, 
+                      model.file="model.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #MC sims and QD model
+  O <- MC_sims$O
+  R <- MC_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  MCdat_QDmod <- jags(data, inits=NULL, params, 
+                      model.file="model_qdb.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #----------------------------------
+  
+  #QD sims and RR model
+  O <- QD_sims$O
+  R <- QD_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S")
+  QDdat_RRmod <- jags(data, inits=NULL, params, 
+                      model.file="randomresp.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #QD sims and UR model
+  O <- QD_sims$O
+  R <- QD_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  QDdat_URmod <- jags(data, inits=NULL, params, 
+                      model.file="unrelated.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #QD sims and model
+  O <- QD_sims$O
+  R <- QD_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  QDdat_MCmod <- jags(data, inits=NULL, params, 
+                      model.file="model.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  #QD sims and QD model
+  O <- QD_sims$O
+  R <- QD_sims$R
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b")
+  QDdat_QDmod <- jags(data, inits=NULL, params, 
+                      model.file="model_qdb.txt", 
+                      n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  
+  #fill up arrays
+###Q: what is the likelihood of the model given the data?
+  
+  DICs_RR_dat[i,1] <- RRdat_RRmod$BUGSoutput$DIC #first column in RR_dat with RR mod.
+  DICs_RR_dat[i,2] <- RRdat_URmod$BUGSoutput$DIC #second column with UR mod.
+  DICs_RR_dat[i,3] <- RRdat_MCmod$BUGSoutput$DIC
+  DICs_RR_dat[i,4] <- RRdat_QDmod$BUGSoutput$DIC
+  
+  DICs_UR_dat[i,1] <- URdat_RRmod$BUGSoutput$DIC
+  DICs_UR_dat[i,2] <- URdat_URmod$BUGSoutput$DIC
+  DICs_UR_dat[i,3] <- URdat_MCmod$BUGSoutput$DIC
+  DICs_UR_dat[i,4] <- URdat_QDmod$BUGSoutput$DIC
+  
+  DICs_MC_dat[i,1] <- MCdat_RRmod$BUGSoutput$DIC
+  DICs_MC_dat[i,2] <- MCdat_URmod$BUGSoutput$DIC
+  DICs_MC_dat[i,3] <- MCdat_MCmod$BUGSoutput$DIC
+  DICs_MC_dat[i,4] <- MCdat_QDmod$BUGSoutput$DIC
+  
+  DICs_QD_dat[i,1] <- QDdat_RRmod$BUGSoutput$DIC
+  DICs_QD_dat[i,2] <- QDdat_URmod$BUGSoutput$DIC
+  DICs_QD_dat[i,3] <- QDdat_MCmod$BUGSoutput$DIC
+  DICs_QD_dat[i,4] <- QDdat_QDmod$BUGSoutput$DIC
+  
+}
+
+best_RR <- array(0,c(niterations))
+best_UR <- array(0,c(niterations))
+best_MC <- array(0,c(niterations))
+best_QD <- array(0,c(niterations))
+for (i in 1:niterations) {
+  best_RR[i] <- which.min(DICs_RR_dat[i,])
+  best_UR[i] <- which.min(DICs_UR_dat[i,])
+  best_MC[i] <- which.min(DICs_MC_dat[i,])
+  best_QD[i] <- which.min(DICs_QD_dat[i,])
+}
+
+```
+
+Creating confusion matrix for visualising the comparison - count for each version
+
+```{r}
+library(caret)
+ref.data <- rep(1,100) #number of iterations
+predRR = factor(best_RR, levels=c(1:4))
+ref.data = factor(ref.data, levels=c(1:4))
+cm1 = confusionMatrix(predRR, ref.data) 
+f1 <- array(cm1$table[,1])
+
+predUR = factor(best_UR, levels=c(1:4))
+cm2 = confusionMatrix(predUR, ref.data) 
+f2 <- array(cm2$table[,1])
+
+predMC = factor(best_MC, levels=c(1:4))
+cm3 = confusionMatrix(predMC, ref.data) 
+f3 <- array(cm3$table[,1])
+
+predQD = factor(best_QD, levels=c(1:4))
+cm4 = confusionMatrix(predQD, ref.data) 
+f4 <- array(cm4$table[,1])
+
+counts <- c(f1[1], f1[2], f1[3], f1[4], f2[1], f2[2], f2[3], f2[4], f3[1], f3[2], f3[3], f3[4], f4[1], f4[2], f4[3], f4[4])
+column.names <- c('RR_data', 'UR_data', 'MC_data', 'QD_data')
+row.names <- c('RR_model', 'UR_model', 'MC_model', 'QD_model')
+conf_matrix <- matrix(data=counts, nrow=4, ncol=4, dimnames=list(row.names, column.names))
+conf_matrix[is.na(conf_matrix)] = 0
+conf_matrix
+```
+         RR_data UR_data MC_data QD_data
+RR_model      81       5       4      17
+UR_model       6      19      19      13
+MC_model       9      72      70      39
+QD_model       4       4       7      31

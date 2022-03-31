@@ -1,0 +1,67 @@
+---
+title: "randomresp"
+output: html_document
+---
+Parameter recovery for the random responding model (sanity check):
+- only one meaningful parameter: skill/performance level
+- monitoring responses are random on top of that
+- the goal was to see whether the skill parameter is recoverable indicating a latent cognitive process generating the observed performance
+
+```{r}
+set.seed(1996)
+library(R2jags)
+library(polspline)
+library(extraDistr)
+
+#task environment
+ntrials <- 25 #25 questions
+nCat <- 4 #4 confidence ratings
+
+#parameter space
+niterations <- 100
+
+#the arrays that will be populated with 'true' set parameters
+true_S <- c(0,c(niterations))
+
+#arrays that will be populated with inferred params
+infer_S <- c(0,c(niterations))
+
+#calling function for simulation
+#setwd('/Users/Blanka/Desktop/thesis_2.0')
+source("randomresp.R")
+
+for (i in 1:niterations){
+  
+  S <- runif(1,1/3,1) #mean = real skill
+  
+  #saving them
+  true_S[i] <- S
+  
+  RR_sims <- RR(ntrials, nCat, S) #using the model function with the specified input
+  
+  #save results of simulations as data
+  O <- RR_sims$O
+  R <- RR_sims$R
+  
+  #running jags on simulated data for inference
+  data <- list("ntrials", "nCat", "O", "R")
+  params <- c("S")
+  samples <- jags(data, inits = NULL,params,
+                model.file = "randomresp.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  #recording MAP values for the inferred parameters
+  S.post <- samples$BUGSoutput$sims.list$S
+  infer_S[i] <- density(S.post)$x[which(density(S.post)$y==max(density(S.post)$y))]
+  
+}
+
+```
+
+```{r}
+plot(true_S, infer_S, main="Underlying skill variable: S", xlab="set skill parameter", ylab="inferred skill parameter")
+cor.test(true_S, infer_S)
+```
+
+
+

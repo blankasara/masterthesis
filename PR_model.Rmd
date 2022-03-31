@@ -1,0 +1,151 @@
+---
+title: "model"
+output: html_document
+---
+
+Parameter recovery of the MODEL operationalizing the hypothesis that skill and monitoring accuracy are related:
+- d' is expressed from skill
+
+Free parameters: S, a, b
+d' is expressed from skill so it should show the same pattern as S (verified)
+thresholds are checked again (produced by a & b)
+
+```{r}
+set.seed(1996)
+library(R2jags)
+library(polspline)
+library(extraDistr)
+
+#task environment
+ntrials <- 25 #25 questions
+nCat <- 4 #4 confidence ratings
+
+#parameter space
+niterations <- 100
+
+#the arrays that will be populated with 'true' set parameters
+true_S <- c(0,c(niterations))
+true_d <- c(0,c(niterations))
+true_a <- c(0,c(niterations))
+true_b <- c(0,c(niterations))
+true_Cs <- array(0,c(niterations,nCat-1)) #saving here the simulated confidence thresholds based on priors a & b
+
+#arrays that will be populated with inferred params
+infer_S <- c(0,c(niterations))
+infer_d <- c(0,c(niterations))
+infer_a <- c(0,c(niterations))
+infer_b <- c(0,c(niterations))
+infer_Cs <- array(0,c(niterations,nCat-1)) #saving here the inferred confidence thresholds
+
+#calling function
+#setwd('/Users/Blanka/Desktop/thesis_2.0')
+source("model.R")
+
+for (i in 1:niterations){
+  
+  #4 skill params
+  S <- runif(1,1/3,1) #mean = real skill
+  #S <- 1/3 this was a test to see what happens at chance
+  rs <- (S-1/3)/(2/3) #like a step function in a way, transforming to 0,1
+  #rescale (linear interpolation) to be between 0,1, also like f(x) of the cummulative uniform distribution
+  #utilizing relationship between AUC under the ROC curve (accuracy) and d' to express d': AUC = cum(d/sqrt(2))
+  auc <- pnorm(rs,0,1) 
+  #area under the curve of a standard normal until rescaled skill threshold
+  d <- qnorm(auc,0,1)*sqrt(2) #AUC = cum(d/sqrt(2)) ==> d=-cum(AUC)*sqrt(2)
+  
+  #priors for biases on the scale
+  a <- rgamma(1,2,2)
+  b <- rnorm(1,0,1)
+  
+  #saving them
+  true_S[i] <- S
+  true_d[i] <- d
+  true_a[i] <- a
+  true_b[i] <- b
+  
+  MC_sims <- MC(ntrials, nCat, S, d, a, b) #using the model function
+  
+  #save results of simulations as data
+  O <- MC_sims$O
+  R <- MC_sims$R
+  true_Cs[i,] <- MC_sims$dReal
+  
+  #running jags on simulated data for inference
+  data <- list("ntrials", "nCat", "O", "R")
+  params <- c("S", "d", "a", "b", "dReal")
+  samples <- jags(data, inits = NULL,params,
+                model.file = "model.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  #recording MAP values for the inferred parameters
+  S.post <- samples$BUGSoutput$sims.list$S
+  infer_S[i] <- density(S.post)$x[which(density(S.post)$y==max(density(S.post)$y))]
+  
+  d.post <- samples$BUGSoutput$sims.list$d
+  infer_d[i] <- density(d.post)$x[which(density(d.post)$y==max(density(d.post)$y))]
+  
+  a.post <- samples$BUGSoutput$sims.list$a
+  infer_a[i] <- density(a.post)$x[which(density(a.post)$y==max(density(a.post)$y))]
+  
+  b.post <- samples$BUGSoutput$sims.list$b
+  infer_b[i] <- density(b.post)$x[which(density(b.post)$y==max(density(b.post)$y))]
+
+  Cs1.post <- samples$BUGSoutput$sims.list$dReal[,1]
+  infer_Cs[i,1] <- density(Cs1.post)$x[which(density(Cs1.post)$y==max(density(Cs1.post)$y))]
+  
+  Cs2.post <- samples$BUGSoutput$sims.list$dReal[,2]
+  infer_Cs[i,2] <- density(Cs2.post)$x[which(density(Cs2.post)$y==max(density(Cs2.post)$y))]
+  
+  Cs3.post <- samples$BUGSoutput$sims.list$dReal[,3]
+  infer_Cs[i,3] <- density(Cs3.post)$x[which(density(Cs3.post)$y==max(density(Cs3.post)$y))]
+  
+}
+```
+
+```{r}
+par(mfrow=c(3,2))
+plot(true_S, infer_S, main="Underlying skill variable: S", xlab="set skill parameter", ylab="inferred skill parameter")
+cor.test(true_S, infer_S)
+
+plot(true_d, infer_d, main="Underlying optimal calibration: d'", xlab="set d' parameter", ylab="inferred d' parameter")
+cor.test(true_d, infer_d)
+
+plot(true_a, infer_a, main="Scale parameter of the confidence scale: a", xlab="set scale parameter", ylab="inferred scale parameter")
+cor.test(true_a, infer_a)
+
+plot(true_b, infer_b, main="Shift parameter of the confidence scale: b", xlab="set shift parameter", ylab="inferred shift parameter")
+cor.test(true_b, infer_b)
+
+plot(true_Cs, infer_Cs, main="Confidence thresholds set by the linear regression", xlab="set thresholds", ylab="inferred thresholds")
+cor.test(true_Cs, infer_Cs)
+```
+
+Double-checking if S and d' correlate by 1 as they should
+
+```{r}
+par(mfrow=c(2,1))
+plot(true_S, true_d, main="Correlation between set skill and optimal calibration", xlab="set skill parameter", ylab="set d' parameter")
+cor.test(true_S, true_d)
+
+plot(infer_S, infer_d, main="Correlation between inferred skill and optimal calibration", xlab="inferred skill parameter", ylab="inferred d' parameter")
+cor.test(infer_S, infer_d)
+```
+
+Further extra (paranoid) double-checking: (not part of the results reported in the paper)
+- recalculating accuracy and checking whether that recovers (expecting similar recoverability as S and d')
+- then in the next chunk correlating that with skill (should show same pattern as with d' == correlation of 1)
+
+```{r}
+AUC_T <- pnorm(true_d/sqrt(2))
+AUC_I <- pnorm(infer_d/sqrt(2))
+plot(AUC_T,AUC_I)
+cor.test(AUC_T,AUC_I)
+```
+```{r}
+plot(true_S, AUC_T)
+cor.test(true_S, AUC_T)
+
+plot(infer_S, AUC_I)
+cor.test(infer_S, AUC_I)
+```
+

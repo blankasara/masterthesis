@@ -1,0 +1,129 @@
+---
+title: "unrelated"
+output: html_document
+---
+Parameter recovery for the null-hypothesis model where skill and monitoring are UNRELATED:
+- the skill parameter is the same as before in random responding generating performance (S)
+- monitoring accuracy is operationalized as a separate free parameter drawn randomly from a uniform distribution of (0,2) (d in the script)
+- different mental models of the confidence scale (shift and scale) are included through the parameters a & b
+- the goal was to see whether set and inferred parameter correlate, indicating an internally coherent model - failure to recover d'
+
+Free parameters: S, d', a, b
+Additionally the three thresholds corresponding to the 4-point rating scale are tested for correlation as well to double-check recoverability of the mental models of the scale set up by a & b
+
+```{r}
+set.seed(1996)
+library(R2jags)
+library(polspline)
+library(extraDistr)
+
+#task environment
+ntrials <- 25 #25 questions
+nCat <- 4 #4 confidence ratings
+
+#parameter space
+niterations <- 100
+
+#the arrays that will be populated with 'true' set parameters
+true_S <- c(0,c(niterations))
+true_d <- c(0,c(niterations))
+true_a <- c(0,c(niterations))
+true_b <- c(0,c(niterations))
+true_Cs <- array(0,c(niterations,nCat-1)) #saving here the simulated confidence thresholds based on priors a & b
+
+#arrays that will be populated with inferred params
+infer_S <- c(0,c(niterations))
+infer_d <- c(0,c(niterations))
+infer_a <- c(0,c(niterations))
+infer_b <- c(0,c(niterations))
+infer_Cs <- array(0,c(niterations,nCat-1)) #saving here the inferred confidence thresholds
+
+#calling function for simulation
+#setwd('/Users/Blanka/Desktop/thesis_2.0')
+source("unrelated.R")
+
+for (i in 1:niterations){
+  
+  #skill and d'
+  S <- runif(1,1/3,1) #mean = real skill
+  d <- runif(1,0,2)
+  
+  #scale and shift
+  a <- rgamma(1,2,2)
+  b <- rnorm(1,0,1)
+  
+  #saving them
+  true_S[i] <- S
+  true_d[i] <- d
+  true_a[i] <- a
+  true_b[i] <- b
+  
+  UR_sims <- UR(ntrials, nCat, S, d, a, b) #using the corresponding model function
+  
+  #save results of simulations as data
+  O <- UR_sims$O
+  R <- UR_sims$R
+  true_Cs[i,] <- UR_sims$dReal
+  
+  #running jags on simulated data for inference
+  data <- list("ntrials", "nCat", "O", "R")
+  params <- c("S", "d", "a", "b", "dReal")
+  samples <- jags(data, inits = NULL,params,
+                model.file = "unrelated.txt",
+                n.chains = 3, n.iter = 5000, n.burnin = 1000, n.thin = 1)
+  
+  #recording MAP values for the inferred parameters
+  S.post <- samples$BUGSoutput$sims.list$S
+  infer_S[i] <- density(S.post)$x[which(density(S.post)$y==max(density(S.post)$y))]
+  
+  d.post <- samples$BUGSoutput$sims.list$d
+  infer_d[i] <- density(d.post)$x[which(density(d.post)$y==max(density(d.post)$y))]
+  
+  a.post <- samples$BUGSoutput$sims.list$a
+  infer_a[i] <- density(a.post)$x[which(density(a.post)$y==max(density(a.post)$y))]
+  
+  b.post <- samples$BUGSoutput$sims.list$b
+  infer_b[i] <- density(b.post)$x[which(density(b.post)$y==max(density(b.post)$y))]
+
+  Cs1.post <- samples$BUGSoutput$sims.list$dReal[,1]
+  infer_Cs[i,1] <- density(Cs1.post)$x[which(density(Cs1.post)$y==max(density(Cs1.post)$y))]
+  
+  Cs2.post <- samples$BUGSoutput$sims.list$dReal[,2]
+  infer_Cs[i,2] <- density(Cs2.post)$x[which(density(Cs2.post)$y==max(density(Cs2.post)$y))]
+  
+  Cs3.post <- samples$BUGSoutput$sims.list$dReal[,3]
+  infer_Cs[i,3] <- density(Cs3.post)$x[which(density(Cs3.post)$y==max(density(Cs3.post)$y))]
+  
+}
+```
+
+```{r}
+par(mfrow=c(3,2))
+plot(true_S, infer_S, main="Underlying skill variable: S", xlab="set skill parameter", ylab="inferred skill parameter")
+cor.test(true_S, infer_S)
+
+plot(true_d, infer_d, main="Underlying optimal calibration: d'", xlab="set d' parameter", ylab="inferred d' parameter")
+cor.test(true_d, infer_d)
+
+plot(true_a, infer_a, main="Scale parameter of the confidence scale: a", xlab="set scale parameter", ylab="inferred scale parameter")
+cor.test(true_a, infer_a)
+
+plot(true_b, infer_b, main="Shift parameter of the confidence scale: b", xlab="set shift parameter", ylab="inferred shift parameter")
+cor.test(true_b, infer_b)
+
+plot(true_Cs, infer_Cs, main="Confidence thresholds set by the linear regression", xlab="set thresholds", ylab="inferred thresholds")
+cor.test(true_Cs, infer_Cs)
+```
+
+Looking at the relationship between the skill and d' parameter:
+- null-hyp: no relationship testing whether that holds
+
+```{r}
+par(mfrow=c(2,1))
+plot(true_S, true_d, main="Correlation between set skill and optimal calibration", xlab="set skill parameter", ylab="set d' parameter")
+cor.test(true_S, true_d)
+
+plot(infer_S, infer_d, main="Correlation between inferred skill and optimal calibration", xlab="inferred skill parameter", ylab="inferred d' parameter")
+cor.test(infer_S, infer_d)
+```
+

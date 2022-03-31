@@ -1,0 +1,307 @@
+---
+title: "desc_adeq"
+output: html_document
+---
+Descriptive adequacy = posterior predictive checks
+In this script the 4 models fit real data that was collected to see which can predict it the best. 
+Note: The collected data is not shared publicly as participants of this research did not consent to that. Only my results are shared here and in the paper. This script may be used as an inspiration to fit the models to alternative datasets.
+
+Transforming the data into a form I can fit my models to
+- GOAL: 2 arrays - one for outcome, one for rating, rows:subs - cols:trials (24)
+```{r}
+#setwd('/Users/Blanka/Desktop/thesis_2.0')
+#data <- read.csv('DATA.csv')
+
+#identify and count unique subject IDs
+pIDs <- unique(data$pID) #anonymized participant IDs
+nsubs <- length(pIDs)
+ntrials <- 24
+nCat <- 4
+
+O_all <- array(0,c(nsubs,ntrials))
+R_all <- array(0,c(nsubs,ntrials))
+
+O_raw <- data[,2:25] #outcomes (pID is lost, but indexed)
+R_raw <- data[,26:49]
+
+for (s in 1:nsubs) {
+  for (t in 1:ntrials){
+    O_all[s,t] <- O_raw[s,t]
+    R_all[s,t] <- R_raw[s,t]
+  }
+}
+```
+
+Fitting the model jags to one (first) participant: exploration (not included in results)
+```{r}
+O <- O_all[1,]
+R <- R_all[1,]
+
+data <- list("O", "R", "ntrials", "nCat")
+params <- c("S", "d", "a", "b", "pR")
+  
+samples <- jags.parallel(data, inits=NULL, params, 
+                           model.file = "model.txt", 
+                           n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+
+#let's look at the posteriors for the params
+par(mfrow=c(2,2))
+plot(density(samples$BUGSoutput$sims.list$S))
+plot(density(samples$BUGSoutput$sims.list$d))
+plot(density(samples$BUGSoutput$sims.list$a))
+plot(density(samples$BUGSoutput$sims.list$b))
+
+#plot probability for each rating on trial 24 - plot the posteriors, the rating with the highest "p" is the rating the model thinks is the most likely to be chosen by the participant
+pR_post <- samples$BUGSoutput$sims.list$pR
+par(mfrow=c(2,2))
+plot(density(pR_post[,24,1])) #highest prob., most likely rating
+plot(density(pR_post[,24,2]))
+plot(density(pR_post[,24,3]))
+plot(density(pR_post[,24,4]))
+
+#check with reality: O: 1 (corr.), most likely R:1, --> true
+O[1]
+R[1]
+
+###Let's write a loop and see how the model goes at predicting ratings for all trials
+R_predict <- array(c(ntrials))
+for (t in 1:ntrials) {
+  
+  #finding maximum a posteriori for each rating on each trial
+  pR_predict <- c(
+    density(pR_post[,t,1])$x[which(density(pR_post[,t,1])$y==max(density(pR_post[,t,1])$y))],
+    density(pR_post[,t,2])$x[which(density(pR_post[,t,2])$y==max(density(pR_post[,t,2])$y))],
+    density(pR_post[,t,3])$x[which(density(pR_post[,t,3])$y==max(density(pR_post[,t,3])$y))],
+    density(pR_post[,t,4])$x[which(density(pR_post[,t,4])$y==max(density(pR_post[,t,4])$y))]
+  )
+  
+  #collect the guess with highest MAP value for each trial
+  R_predict[t] <- which.max(pR_predict)
+  
+}
+
+sum(R_predict==R) #compare predictions to the data and estimate how many correct
+#The model guessed 10 times out of 24 correctly for the first participant (~0.42 acc.)
+
+###Now let's look at how the model performs accross all subjects!
+```
+
+Posterior predictive checks for all participants with model:
+
+```{r}
+#array to populate with number of correct predictions for each participant
+pred_success <- array(c(nsubs))
+
+for (s in 1:nsubs) {
+  
+  #now we take all participants
+  O <- O_all[s,]
+  R <- R_all[s,]
+  
+  ntrials <- ntrials
+  nCat <- nCat
+  
+  #set up jags and run jags model on all participants one by one
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b", "pR")
+  
+  samples <- jags.parallel(data, inits=NULL, params, 
+                           model.file = "model.txt", 
+                           n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  pR_post <- samples$BUGSoutput$sims.list$pR
+  
+  #new loop to record guesses of the model as above for one participant
+  R_predict <- array(c(ntrials))
+  for (t in 1:ntrials) {
+  
+    #finding maximum a posteriori for each rating on each trial
+    pR_predict <- c(
+      density(pR_post[,t,1])$x[which(density(pR_post[,t,1])$y==max(density(pR_post[,t,1])$y))],
+      density(pR_post[,t,2])$x[which(density(pR_post[,t,2])$y==max(density(pR_post[,t,2])$y))],
+      density(pR_post[,t,3])$x[which(density(pR_post[,t,3])$y==max(density(pR_post[,t,3])$y))],
+      density(pR_post[,t,4])$x[which(density(pR_post[,t,4])$y==max(density(pR_post[,t,4])$y))]
+    )
+  
+    #collect the model guess with biggest MAP value for each trial
+    R_predict[t] <- which.max(pR_predict)
+  
+  }
+  
+  #how many trials did the model predict correctly per participant?
+  pred_success[s] <- sum(R_predict==R,na.rm=TRUE)
+  print(s) #printing at which participant we are at
+  
+}
+
+#descriptive stats
+print(pred_success)
+print(mean(pred_success))
+print(median(pred_success))
+print(mean(pred_success)/24)
+```
+[1] 10 12 12 16 10 11 10  6 10 13 20  8 10  9 16 16 11 15  9 10 11 14  7 19 12 10  9 18
+[29] 12 19 11 13 11 14 13 15 17 13
+[1] 12.42105
+[1] 12
+[1] 0.5175439 - pred accuracy, little above chance
+
+
+LETS DO THE SAME WITH MODEL UNRELATED
+
+```{r}
+pred_success <- array(c(nsubs))
+
+for (s in 1:nsubs) {
+  
+  O <- O_all[s,]
+  R <- R_all[s,]
+  
+  ntrials <- ntrials
+  nCat <- nCat
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b", "pR")
+  
+  samples <- jags.parallel(data, inits=NULL, params, 
+                           model.file = "unrelated.txt", 
+                           n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  pR_post <- samples$BUGSoutput$sims.list$pR
+  
+  R_predict <- array(c(ntrials))
+  for (t in 1:ntrials) {
+  
+    pR_predict <- c(
+      density(pR_post[,t,1])$x[which(density(pR_post[,t,1])$y==max(density(pR_post[,t,1])$y))],
+      density(pR_post[,t,2])$x[which(density(pR_post[,t,2])$y==max(density(pR_post[,t,2])$y))],
+      density(pR_post[,t,3])$x[which(density(pR_post[,t,3])$y==max(density(pR_post[,t,3])$y))],
+      density(pR_post[,t,4])$x[which(density(pR_post[,t,4])$y==max(density(pR_post[,t,4])$y))]
+    )
+  
+    R_predict[t] <- which.max(pR_predict)
+  
+  }
+  
+  pred_success[s] <- sum(R_predict==R,na.rm=TRUE)
+  print(s)
+  
+}
+
+print(pred_success)
+print(mean(pred_success))
+print(median(pred_success))
+print(mean(pred_success)/24)
+```
+[1] 10 12 13 16 10 11 10  6 12 13 20 11 10  9 16 16 11 18 10 10 11 14  7 19 12 10  6 19
+[29] 12 19 11 13 11 14 13 19 17 13
+[1] 12.73684
+[1] 12
+[1] 0.5307018 - slight bit better
+
+
+AND THE SAME WITH RANDOM RESPONDING
+```{r}
+pred_success <- array(c(nsubs))
+
+for (s in 1:nsubs) {
+  
+  O <- O_all[s,]
+  R <- R_all[s,]
+  
+  ntrials <- ntrials
+  nCat <- nCat
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "pR")
+  
+  samples <- jags.parallel(data, inits=NULL, params, 
+                           model.file = "randomresp.txt", 
+                           n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  pR_post <- samples$BUGSoutput$sims.list$pR
+  
+  R_predict <- array(c(ntrials))
+  for (t in 1:ntrials) {
+  
+    pR_predict <- c(
+      density(pR_post[,t,1])$x[which(density(pR_post[,t,1])$y==max(density(pR_post[,t,1])$y))],
+      density(pR_post[,t,2])$x[which(density(pR_post[,t,2])$y==max(density(pR_post[,t,2])$y))],
+      density(pR_post[,t,3])$x[which(density(pR_post[,t,3])$y==max(density(pR_post[,t,3])$y))],
+      density(pR_post[,t,4])$x[which(density(pR_post[,t,4])$y==max(density(pR_post[,t,4])$y))]
+    )
+  
+    R_predict[t] <- which.max(pR_predict)
+  
+  }
+  
+  pred_success[s] <- sum(R_predict==R,na.rm=TRUE)
+  print(s)
+  
+}
+
+print(pred_success)
+print(mean(pred_success))
+print(median(pred_success))
+print(mean(pred_success)/24)
+```
+[1]  8 12  2  0  5  8  4  1  3  5  0 11  5  6  0  1  5  0  3  3  8  4  6  0  3  0  5  1
+[29]  4 19  5  2  0 14  2  1  4  3
+[1] 4.289474
+sd: 4.229292
+[1] 3.5
+[1] 0.1787281 --> worst so far, very bad - aka responding is definitely not random
+
+
+AND THE SAME WITH QDB (QUESTION DIFFICULTY WITH BIAS) MODEL
+```{r}
+pred_success <- array(c(nsubs))
+
+for (s in 1:nsubs) {
+  
+  O <- O_all[s,]
+  R <- R_all[s,]
+  
+  ntrials <- ntrials
+  nCat <- nCat
+  
+  data <- list("O", "R", "ntrials", "nCat")
+  params <- c("S", "d", "a", "b", "pR")
+  
+  samples <- jags.parallel(data, inits=NULL, params, 
+                           model.file = "model_qdb.txt", 
+                           n.chains=3, n.iter=5000, n.burnin=1000, n.thin=1)
+  
+  pR_post <- samples$BUGSoutput$sims.list$pR
+  
+  R_predict <- array(c(ntrials))
+  for (t in 1:ntrials) {
+  
+    pR_predict <- c(
+      density(pR_post[,t,1])$x[which(density(pR_post[,t,1])$y==max(density(pR_post[,t,1])$y))],
+      density(pR_post[,t,2])$x[which(density(pR_post[,t,2])$y==max(density(pR_post[,t,2])$y))],
+      density(pR_post[,t,3])$x[which(density(pR_post[,t,3])$y==max(density(pR_post[,t,3])$y))],
+      density(pR_post[,t,4])$x[which(density(pR_post[,t,4])$y==max(density(pR_post[,t,4])$y))]
+    )
+  
+    R_predict[t] <- which.max(pR_predict)
+  
+  }
+  
+  pred_success[s] <- sum(R_predict==R,na.rm=TRUE)
+  print(s)
+  
+}
+
+print(pred_success)
+print(mean(pred_success))
+print(median(pred_success))
+print(mean(pred_success)/24)
+```
+[1] 21 21 21 21 20 24 18 23 16 15 20 20 20 21 16 18 21 15 24 22 24 16 22 19 18 19 18 19
+[29] 18 19 20 21 19 20 18 17 19 14
+[1] 19.39474 (mean)
+[1] 19.5 (median)
+Range: 14-24
+[1] 0.808114 - wow!!!!!
+
