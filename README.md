@@ -35,7 +35,7 @@ The 4 models: (Thesis.pdf pp.34-40)
 - Model: model operationalizing RQ1; monitoring (d') is expressed from skill utilizing d' assumptions ==> function: model.R, jags: model.txt
 - Model with added question difficulty: model operationalizing RQ2; see plate notation below (included here, as this model 'won') ==> function: model_qdb.R, jags: model_qdb.txt
 
-
+![plate notation](/model_qdb.png)
 
 ## Cite this
 If you find any parts of my work useful for your own project, you may cite it as (in APA):
